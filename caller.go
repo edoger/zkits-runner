@@ -26,6 +26,7 @@ type PanicError struct {
 	v interface{}
 }
 
+// Error method is an implementation of the error interface.
 func (e *PanicError) Error() string {
 	switch o := e.v.(type) {
 	case string:
