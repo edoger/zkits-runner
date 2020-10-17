@@ -14,6 +14,14 @@
 
 package runner
 
+import (
+	"context"
+	"net/http"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
 // Task interface defines the task units that the runner can run.
 type Task interface {
 	// Execute method is the entry point for the task to run.
@@ -58,4 +66,86 @@ func (t *funcTask) Shutdown() error {
 		return nil
 	}
 	return t.shutdown()
+}
+
+// NewTaskFromHTTPServer creates and returns a Task from a given http.Server.
+// If the given http.Server is nil, panic immediately.
+func NewTaskFromHTTPServer(server *http.Server, options *HTTPServerOptions) Task {
+	if server == nil {
+		panic("NewTaskFromFunc(): nil http server")
+	}
+	if options == nil {
+		options = new(HTTPServerOptions)
+	}
+	return &httpServerTask{server: server, options: options}
+}
+
+// HTTPServerOptions defines options when the http.Server is run as a Task.
+type HTTPServerOptions struct {
+	// ErrorHandler is used to handle http.Server errors.
+	// Normally, it is executed at most once during the running period of this http.Server.
+	ErrorHandler func(error)
+
+	// TLSCertFile and TLSKeyFile are used to enable TLS and are only valid if they are not empty.
+	TLSCertFile, TLSKeyFile string
+}
+
+// The httpServerTask type is used to wrap the http.Server as a task.
+type httpServerTask struct {
+	mutex   sync.Mutex
+	status  int64
+	err     error
+	server  *http.Server
+	options *HTTPServerOptions
+}
+
+// Execute starts the current http server task.
+// This method is idempotent. If an error occurs in the http server, this method
+// will always return the last error.
+func (t *httpServerTask) Execute() error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	if atomic.CompareAndSwapInt64(&t.status, 0, 1) {
+		wg := new(sync.WaitGroup)
+		wg.Add(1)
+		go t.execute(wg)
+		wg.Wait()
+		// Sleep for 5 milliseconds to ensure that the http server
+		// is started as much as possible.
+		time.Sleep(time.Millisecond * 5)
+	}
+	return t.err
+}
+
+// The execute method will block waiting for the http server to exit.
+func (t *httpServerTask) execute(wg *sync.WaitGroup) {
+	// Report immediately that the goroutine has started running.
+	go wg.Done()
+
+	if t.options.TLSCertFile != "" && t.options.TLSKeyFile != "" {
+		t.err = t.server.ListenAndServeTLS(t.options.TLSCertFile, t.options.TLSKeyFile)
+	} else {
+		t.err = t.server.ListenAndServe()
+	}
+
+	if t.err != nil {
+		// Since the http.ErrServerClosed error is returned when the http server
+		// exits normally, we will not report it here.
+		if t.err != http.ErrServerClosed && t.options.ErrorHandler != nil {
+			t.options.ErrorHandler(t.err)
+		}
+	}
+}
+
+// Shutdown shuts down the http server.
+// This method is idempotent.
+func (t *httpServerTask) Shutdown() error {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	if atomic.CompareAndSwapInt64(&t.status, 1, 2) {
+		return t.server.Shutdown(context.Background())
+	}
+	return nil
 }
