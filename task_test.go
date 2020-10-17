@@ -108,7 +108,7 @@ func TestHTTPServerTask(t *testing.T) {
 	if err := task.Shutdown(); err != nil {
 		t.Fatal(err)
 	}
-	if err := task.Execute(); err != http.ErrServerClosed {
+	if err := task.Execute(); err != nil && err != http.ErrServerClosed {
 		t.Fatalf("The http server task not closed: %s", err)
 	}
 }
