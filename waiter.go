@@ -29,8 +29,13 @@ var (
 
 // GetSystemExitChan function returns the system exit signal channel.
 func GetSystemExitChan() <-chan struct{} {
-	onceWait.Do(func() { go waitSystemExitSignal() })
+	onceWait.Do(doWaitSystemExitSignal)
 	return chanExit
+}
+
+// Start a coroutine to run the waitSystemExitSignal function.
+func doWaitSystemExitSignal() {
+	go waitSystemExitSignal()
 }
 
 // Wait the exit signal of the operating system.
