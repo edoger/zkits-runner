@@ -72,7 +72,7 @@ func (t *funcTask) Shutdown() error {
 // If the given http.Server is nil, panic immediately.
 func NewTaskFromHTTPServer(server *http.Server, options *HTTPServerOptions) Task {
 	if server == nil {
-		panic("NewTaskFromFunc(): nil http server")
+		panic("NewTaskFromHTTPServer(): nil http server")
 	}
 	if options == nil {
 		options = new(HTTPServerOptions)
