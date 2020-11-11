@@ -57,3 +57,83 @@ func waitSystemExitSignal() {
 func WaitSystemExit() {
 	<-GetSystemExitChan()
 }
+
+// The Waiter interface defines the waiter.
+type Waiter interface {
+	// Wait blocks the current coroutine and waits for the current waiter to be closed.
+	Wait()
+
+	// Done reports that the current coroutine will exit.
+	Done()
+}
+
+// The CloseableWaiter interface defines the closeable waiter.
+type CloseableWaiter interface {
+	Waiter
+
+	// Waiter returns a pure waiter.
+	Waiter() Waiter
+
+	// Close closes the current waiter and waits for the Done method to be called.
+	Close()
+}
+
+// NewCloseableWaiter creates and returns a new CloseableWaiter instance.
+func NewCloseableWaiter() CloseableWaiter {
+	return &channelCloseableWaiter{newChannelWaiter()}
+}
+
+// The channelCloseableWaiter type is a built-in implementation of the CloseableWaiter interface.
+type channelCloseableWaiter struct {
+	*channelWaiter
+}
+
+// Waiter returns a pure waiter.
+func (w *channelCloseableWaiter) Waiter() Waiter {
+	return w.channelWaiter
+}
+
+// Close closes the current waiter and waits for the Done method to be called.
+func (w *channelCloseableWaiter) Close() {
+	w.close()
+}
+
+// The newChannelWaiter function creates and returns a new instance of the built-in waiter.
+func newChannelWaiter() *channelWaiter {
+	return &channelWaiter{
+		messageChan: make(chan struct{}),
+		receiptChan: make(chan struct{}),
+	}
+}
+
+// The channelWaiter type is a built-in implementation of the Waiter interface.
+type channelWaiter struct {
+	messageChan, receiptChan chan struct{}
+	messageOnce, receiptOnce sync.Once
+}
+
+// Wait blocks the current coroutine and waits for the current waiter to be closed.
+func (w *channelWaiter) Wait() {
+	<-w.messageChan
+}
+
+// Done reports that the current coroutine will exit.
+func (w *channelWaiter) Done() {
+	w.receiptOnce.Do(w.closeReceiptChan)
+}
+
+// This method closes the receipt channel.
+func (w *channelWaiter) closeReceiptChan() {
+	close(w.receiptChan)
+}
+
+// Close the current waiter and waits for the Done method to be called.
+func (w *channelWaiter) close() {
+	w.messageOnce.Do(w.closeMessageChan)
+	<-w.receiptChan
+}
+
+// This method closes the message channel.
+func (w *channelWaiter) closeMessageChan() {
+	close(w.messageChan)
+}
