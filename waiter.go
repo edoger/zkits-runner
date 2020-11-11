@@ -63,6 +63,9 @@ type Waiter interface {
 	// Wait blocks the current coroutine and waits for the current waiter to be closed.
 	Wait()
 
+	// Channel returns a read-only channel that can be used for select.
+	Channel() <-chan struct{}
+
 	// Done reports that the current coroutine will exit.
 	Done()
 }
@@ -115,6 +118,11 @@ type channelWaiter struct {
 // Wait blocks the current coroutine and waits for the current waiter to be closed.
 func (w *channelWaiter) Wait() {
 	<-w.messageChan
+}
+
+// Channel returns a read-only channel that can be used for select.
+func (w *channelWaiter) Channel() <-chan struct{} {
+	return w.messageChan
 }
 
 // Done reports that the current coroutine will exit.
