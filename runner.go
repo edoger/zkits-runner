@@ -112,7 +112,7 @@ func (r *runner) Exit() error {
 	r.mutex.Lock()
 	defer func() {
 		// Make sure to unblock the Wait method.
-		r.onceExit.Do(func() { close(r.chanExit) })
+		r.onceExit.Do(r.closeExitChan)
 		r.mutex.Unlock()
 	}()
 	// In this case, we don't care about the state of the runner, just
@@ -131,6 +131,11 @@ func (r *runner) Exit() error {
 		return err
 	}
 	return err.First()
+}
+
+// Close the current runner and exit channel.
+func (r *runner) closeExitChan() {
+	close(r.chanExit)
 }
 
 // Exited method determines whether the current runner has exited.
