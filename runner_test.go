@@ -16,134 +16,174 @@ package runner
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestNew(t *testing.T) {
 	if r := New(); r == nil {
-		t.Fatal("New(): return nil")
+		t.Fatal("New(): nil")
 	}
 }
 
 func TestRunner_Run(t *testing.T) {
-	r := New()
-
-	if err := r.Run(NewTaskFromFunc(nil)); err != nil {
-		t.Fatalf("Runner.Run(): %s", err)
-	}
-	if err := r.Run(NewTaskFromFunc(func() error { return errors.New("test1") })); err == nil {
-		t.Fatal("Runner.Run(): nil error")
+	do := func(fs ...func(Runner)) {
+		for _, f := range fs {
+			f(New())
+		}
 	}
 
-	n := 0
-	task1 := NewTaskFromFunc(func() error {
-		n = 1
-		return nil
+	do(func(r Runner) {
+		if got := r.Run(NewTaskFromFunc(nil)); got != nil {
+			t.Fatalf("Runner.Run(): %s", got)
+		}
+	}, func(r Runner) {
+		want := errors.New("test error")
+		if got := r.Run(NewTaskFromFunc(func() error { return want })); got != want {
+			t.Fatalf("Runner.Run(): %s", got)
+		}
+	}, func(r Runner) {
+		if got := r.Run(NewTaskFromFunc(func() error { panic("test") })); !IsPanicError(got) {
+			t.Fatalf("Runner.Run(): %s", got)
+		}
+	}, func(r Runner) {
+		if err := r.Exit(); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := r.Run(NewTaskFromFunc(nil)); got != ErrExited {
+			t.Fatalf("Runner.Run(): %s", got)
+		}
 	})
-	if err := r.Run(task1); err != nil {
-		t.Fatalf("Runner.Run(): %s", err)
-	}
-	if n != 1 {
-		t.Fatalf("Runner.Run(): n = %d", n)
-	}
 }
 
 func TestRunner_MustRun(t *testing.T) {
-	r := New()
-	if r.MustRun(NewTaskFromFunc(nil)) == nil {
-		t.Fatal("Runner.MustRun(): return nil")
+	do := func(fs ...func(Runner)) {
+		for _, f := range fs {
+			f(New())
+		}
 	}
+
+	do(func(r Runner) {
+		r.MustRun(NewTaskFromFunc(nil))
+	}, func(r Runner) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("Runner.MustRun(): no panic")
+			}
+		}()
+
+		r.MustRun(NewTaskFromFunc(func() error {
+			return errors.New("test")
+		}))
+	}, func(r Runner) {
+		if err := r.Exit(); err != nil {
+			t.Fatal(err)
+		}
+
+		defer func() {
+			if recover() == nil {
+				t.Fatal("Runner.MustRun(): no panic")
+			}
+		}()
+
+		r.MustRun(NewTaskFromFunc(nil))
+	})
 }
 
 func TestRunner_Exit(t *testing.T) {
-	r := New()
-	r.MustRun(NewTaskFromFunc(nil))
-	if r.Exited() {
-		t.Fatal("Runner.Exited(): true")
-	}
-	if err := r.Exit(); err != nil {
-		t.Fatalf("Runner.Exit(): [1] %s", err)
-	}
-	if !r.Exited() {
-		t.Fatal("Runner.Exited(): false")
-	}
-
-	if err := r.Run(NewTaskFromFunc(nil)); err != ErrExited {
-		t.Fatalf("Runner.Run(): [exited] %s", err)
-	}
-	if err := r.Exit(); err != nil {
-		t.Fatalf("Runner.Exit(): [2] %s", err)
-	}
-
-	r = New()
-	r.MustRun(NewTaskFromFunc(nil, func() error {
-		return errors.New("err1")
-	}))
-	r.MustRun(NewTaskFromFunc(nil, func() error {
-		return errors.New("err2")
-	}))
-	if err := r.Exit(); err == nil {
-		t.Fatal("Runner.Exit(): [3] nil error")
-	} else {
-		s := err.Error()
-		if s != "err2; err1" {
-			t.Fatalf("Runner.Exit(): [3] %s", s)
+	do := func(fs ...func(Runner)) {
+		for _, f := range fs {
+			f(New())
 		}
 	}
 
-	r = New()
-	n := 0
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := r.WaitBy(nil); err == nil {
-			n = 1
+	do(func(r Runner) {
+		var ss []string
+		r.MustRun(NewTaskFromFunc(func() error {
+			ss = append(ss, "A1")
+			return nil
+		}, func() error {
+			ss = append(ss, "B1")
+			return nil
+		}))
+		r.MustRun(NewTaskFromFunc(func() error {
+			ss = append(ss, "A2")
+			return nil
+		}, func() error {
+			ss = append(ss, "B2")
+			return nil
+		}))
+
+		if got := r.Exited(); got {
+			t.Fatal("Runner.Exited(): true")
+		}
+		if err := r.Exit(); err != nil {
+			t.Fatalf("Runner.Exit(): %s", err)
+		}
+		if got := r.Exited(); !got {
+			t.Fatal("Runner.Exited(): false")
+		}
+
+		if got := strings.Join(ss, "-"); got != "A1-A2-B2-B1" {
+			t.Fatalf("Runner.Exit(): %s", got)
+		}
+	}, func(r Runner) {
+		r.MustRun(NewTaskFromFunc(nil, func() error {
+			return errors.New("err1")
+		}))
+		r.MustRun(NewTaskFromFunc(nil, func() error {
+			return errors.New("err2")
+		}))
+
+		if err := r.Exit(); err == nil {
+			t.Fatal("Runner.Exit(): no error")
 		} else {
-			t.Logf("Runner.WaitBy(): %s", err)
+			if got := err.Error(); got != "err2; err1" {
+				t.Fatalf("Runner.Exit(): %s", got)
+			}
 		}
-	}()
-	time.Sleep(time.Millisecond * 20)
-	if err := r.Exit(); err != nil {
-		t.Fatalf("Runner.Exit(): [4] %s", err)
-	}
-	wg.Wait()
-	if n != 1 {
-		t.Fatalf("Runner.WaitBy(): %d", n)
-	}
+	})
 }
 
 func TestRunner_Wait(t *testing.T) {
-	r := New()
-	r.MustRun(NewTaskFromFunc(nil, func() error {
-		return errors.New("test")
-	}))
-	var n int
-	var err error
-
-	wg := new(sync.WaitGroup)
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		err = r.Wait()
-	}()
-	go func() {
-		defer wg.Done()
-		WaitSystemExit()
-		n = 1
-	}()
-
-	time.Sleep(time.Millisecond * 20)
-	// Close system exit channel.
-	systemExitOnce.Do(func() { close(systemExitChan) })
-	wg.Wait()
-
-	if n != 1 {
-		t.Fatalf("WaitSystemExit(): %d", n)
+	do := func(fs ...func(Runner)) {
+		for _, f := range fs {
+			f(New())
+		}
 	}
-	if err == nil {
-		t.Fatal("Runner.Wait(): nil error")
-	}
+
+	do(func(r Runner) {
+		r.MustRun(NewTaskFromFunc(nil))
+
+		var m, n int
+
+		ch := make(chan struct{})
+		wg := new(sync.WaitGroup)
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if err := r.Wait(); err != nil {
+				t.Fatalf("Runner.Wait(): %s", err)
+			} else {
+				m++
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if err := r.WaitBy(ch); err != nil {
+				t.Fatalf("Runner.WaitBy(): %s", err)
+			} else {
+				n++
+			}
+		}()
+
+		close(ch)
+		wg.Wait()
+
+		if m != 1 || n != 1 {
+			t.Fatalf("Runner: %d %d", m, n)
+		}
+	})
 }
