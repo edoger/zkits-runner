@@ -137,7 +137,7 @@ func TestRunner_Wait(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 20)
 	// Close system exit channel.
-	onceExit.Do(func() { close(chanExit) })
+	systemExitOnce.Do(func() { close(systemExitChan) })
 	wg.Wait()
 
 	if n != 1 {
