@@ -15,6 +15,7 @@
 package runner
 
 import (
+	"strings"
 	"sync"
 	"testing"
 )
@@ -75,40 +76,49 @@ func TestBroadcaster(t *testing.T) {
 		t.Fatal("NewBroadcaster(): nil")
 	}
 
-	var m, n int
+	var ss []string
 
 	go func(w Waiter) {
 		defer w.Done()
 		w.Wait()
-		m++
+		ss = append(ss, "A")
 	}(b.NewWaiter())
 
 	go func(w Waiter) {
 		defer w.Done()
 		<-w.Channel()
-		n++
+		ss = append(ss, "B")
 	}(b.NewWaiter())
 
 	b.Broadcast()
-	if m != 1 || n != 1 {
-		t.Fatalf("Broadcaster.Broadcast(): %d %d", m, n)
+	if got := strings.Join(ss, "-"); got != "B-A" {
+		t.Fatalf("Broadcaster.Broadcast(): %s", got)
 	}
 
 	go func(w Waiter) {
 		defer w.Done()
+		w.Wait()
+		ss = append(ss, "C")
+	}(b.NewWaiter())
+
+	go func(w Waiter) {
+		defer w.Done()
 		<-w.Channel()
-		m++
-		n++
+		ss = append(ss, "D")
 	}(b.NewWaiter())
 
 	b.Close()
-	if m != 2 || n != 2 {
-		t.Fatalf("Broadcaster.Close(): %d %d", m, n)
+	if got := strings.Join(ss, "-"); got != "B-A-D-C" {
+		t.Fatalf("Broadcaster.Close(): %s", got)
 	}
 
 	select {
 	case <-b.NewWaiter().Channel():
+		ss = append(ss, "F")
 	default:
-		t.Fatal("Broadcaster: closed")
+		ss = append(ss, "E")
+	}
+	if got := strings.Join(ss, "-"); got != "B-A-D-C-F" {
+		t.Fatalf("Broadcaster.NewWaiter(): %s", got)
 	}
 }
