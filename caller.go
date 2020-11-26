@@ -73,3 +73,11 @@ func MustCall(f func() error) {
 		panic(err)
 	}
 }
+
+// Go is like SafeCall, but it is executed asynchronously.
+// The returned read-only channel is used to get the error when the given function exits.
+func Go(f func() error) <-chan error {
+	c := make(chan error, 1)
+	go func(c chan error) { c <- SafeCall(f) }(c)
+	return c
+}
