@@ -116,3 +116,14 @@ func TestPanicError_Error(t *testing.T) {
 		}
 	}
 }
+
+func TestGo(t *testing.T) {
+	want := errors.New("test")
+	got := <-Go(func() error {
+		return want
+	})
+
+	if want != got {
+		t.Fatalf("Go(): %s", got)
+	}
+}
