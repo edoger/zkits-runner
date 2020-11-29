@@ -14,35 +14,34 @@ This package is a library of ZKits project.
 This library provides a convenient subtask runner for applications. 
 We can easily control the running order of subtasks and exit them in reverse order.
 
+## Install ##
+
+```sh
+go get -u -v github.com/edoger/zkits-runner
+```
+
 ## Usage ##
 
- 1. Import package.
- 
-    ```sh
-    go get -u -v github.com/edoger/zkits-runner
-    ```
+```go
+package main
 
- 2. Create a runner to run subtasks within the application.
+import (
+   "github.com/edoger/zkits-runner"
+)
 
-    ```go
-    package main
-    
-    import (
-       "github.com/edoger/zkits-runner"
-    )
-    
-    func main() {
-       r := runner.New()
-       err := r.Run(runner.NewTaskFromFunc(nil, func() error {
-           // Do something.
-           return nil
-       }))
-       // Wait system exit.
-       if err := r.Wait(); err != nil {
-           // Handle error.
-       }
+func main() {
+    r := runner.New()
+    err := r.Run(runner.NewTaskFromFunc(nil, func() error {
+        // Do something.
+        return nil
+    }))
+
+    // Wait system exit.
+    if err := r.Wait(); err != nil {
+        // Handle error.
     }
-    ```
+}
+```
 
 ## License ##
 
