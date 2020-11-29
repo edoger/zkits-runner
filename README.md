@@ -2,6 +2,7 @@
 
 [![ZKits](https://img.shields.io/badge/ZKits-Library-f3c)](https://github.com/edoger/zkits-runner)
 [![Build Status](https://travis-ci.org/edoger/zkits-runner.svg?branch=master)](https://travis-ci.org/edoger/zkits-runner)
+[![Build status](https://ci.appveyor.com/api/projects/status/akl62co7bn4wtgvf/branch/master?svg=true)](https://ci.appveyor.com/project/edoger56924/zkits-runner/branch/master)
 [![Coverage Status](https://coveralls.io/repos/github/edoger/zkits-runner/badge.svg?branch=master)](https://coveralls.io/github/edoger/zkits-runner?branch=master)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/b6cfc08a46a04e19acfbf722b013567e)](https://www.codacy.com/manual/edoger/zkits-runner/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=edoger/zkits-runner&amp;utm_campaign=Badge_Grade)
 [![Go Report Card](https://goreportcard.com/badge/github.com/edoger/zkits-runner)](https://goreportcard.com/report/github.com/edoger/zkits-runner)
