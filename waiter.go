@@ -16,6 +16,8 @@ package runner
 
 import (
 	"sync"
+
+	"github.com/edoger/zkits-runner/internal"
 )
 
 // The Waiter interface defines the waiter.
@@ -47,14 +49,12 @@ func GetEmptyWaiter() Waiter {
 
 // The newEmptyWaiter function creates and returns an empty waiter instance.
 func newEmptyWaiter() Waiter {
-	w := &emptyWaiter{make(chan struct{})}
-	close(w.c)
-	return w
+	return &emptyWaiter{internal.ClosedChan()}
 }
 
 // The emptyWaiter type defines an empty waiter.
 type emptyWaiter struct {
-	c chan struct{}
+	c <-chan struct{}
 }
 
 // Wait does nothing.
