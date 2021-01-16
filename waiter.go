@@ -16,8 +16,6 @@ package runner
 
 import (
 	"sync"
-
-	"github.com/edoger/zkits-runner/internal"
 )
 
 // The Waiter interface defines the waiter.
@@ -36,35 +34,13 @@ type Waiter interface {
 	Done()
 }
 
-// This is the global default empty wait.
-// Since the behavior of the empty wait is deterministic, we share an empty wait instance.
-var defaultEmptyWaiter = newEmptyWaiter()
+type ReceiptableWaiter interface {
+	Waiter
 
-// GetEmptyWaiter returns an empty waiter instance.
-// For the returned empty waiter, the Wait method does not block, the Channel method
-// always returns a closed channel, and the Done method is an empty function.
-func GetEmptyWaiter() Waiter {
-	return defaultEmptyWaiter
+	// Done reports that the current coroutine will exit.
+	// In an asynchronous coroutine, be sure to call this method before exiting.
+	Done()
 }
-
-// The newEmptyWaiter function creates and returns an empty waiter instance.
-func newEmptyWaiter() Waiter {
-	return &emptyWaiter{internal.ClosedChan()}
-}
-
-// The emptyWaiter type defines an empty waiter.
-type emptyWaiter struct {
-	c <-chan struct{}
-}
-
-// Wait does nothing.
-func (w *emptyWaiter) Wait() { /* Do nothing */ }
-
-// Channel returns a closed channel.
-func (w *emptyWaiter) Channel() <-chan struct{} { return w.c }
-
-// Done does nothing.
-func (w *emptyWaiter) Done() { /* Do nothing */ }
 
 // The newChannelWaiter function returns a new instance of the built-in waiter.
 func newChannelWaiter() *channelWaiter {
@@ -201,7 +177,7 @@ func (b *broadcaster) NewWaiter() Waiter {
 	defer b.mutex.Unlock()
 
 	if b.closed {
-		return GetEmptyWaiter()
+		return EmptyWaiter()
 	}
 	w := NewCloseableWaiter()
 	b.waiters = append(b.waiters, w)

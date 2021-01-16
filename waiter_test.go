@@ -21,13 +21,13 @@ import (
 )
 
 func TestGetEmptyWaiter(t *testing.T) {
-	if GetEmptyWaiter() == nil {
+	if EmptyWaiter() == nil {
 		t.Fatal("GetEmptyWaiter(): nil")
 	}
 
 	var n int
 	select {
-	case <-GetEmptyWaiter().Channel():
+	case <-EmptyWaiter().Channel():
 		n++
 	default:
 	}
