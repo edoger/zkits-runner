@@ -14,19 +14,15 @@
 
 package internal
 
-import (
-	"sync"
-)
+// This is a closed channel from which reading is never blocked.
+var closedChan chan struct{}
 
-var (
-	closedChan     chan struct{}
-	closedChanOnce sync.Once
-)
+func init() {
+	closedChan = make(chan struct{})
+	close(closedChan)
+}
 
 // ClosedChan returns a read-only closed channel.
 func ClosedChan() <-chan struct{} {
-	if closedChan == nil {
-		closedChanOnce.Do(func() { close(closedChan) })
-	}
 	return closedChan
 }
