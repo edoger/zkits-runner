@@ -89,4 +89,67 @@ func TestWaitQueue(t *testing.T) {
 	if s := strings.Join(ss, ""); s != "test1test2test3test4test5" {
 		t.Fatalf("WaitQueue: %s", s)
 	}
+
+	wg3 := new(sync.WaitGroup)
+	wg3.Add(5)
+	ss = make([]string, 5)
+
+	go func(w ReceiptableWaiter) {
+		wg3.Done()
+		w.Wait()
+		ss[0] = "test1"
+		w.Done()
+	}(wq.NewReceiptableWaiter())
+	go func(w ReceiptableWaiter) {
+		wg3.Done()
+		w.Wait()
+		ss[1] = "test2"
+		w.Done()
+	}(wq.NewReceiptableWaiter())
+	go func(w ReceiptableWaiter) {
+		wg3.Done()
+		w.Wait()
+		ss[2] = "test3"
+		w.Done()
+	}(wq.NewReceiptableWaiter())
+	go func(w ReceiptableWaiter) {
+		wg3.Done()
+		w.Wait()
+		ss[3] = "test4"
+		w.Done()
+	}(wq.NewReceiptableWaiter())
+	go func(w ReceiptableWaiter) {
+		wg3.Done()
+		w.Wait()
+		ss[4] = "test5"
+		w.Done()
+	}(wq.NewReceiptableWaiter())
+
+	wg3.Wait()
+
+	if n := wq.Len(); n != 5 {
+		t.Fatalf("WaitQueue.Len(): %d", n)
+	}
+
+	if n := wq.Release(2); n != 2 {
+		t.Fatalf("WaitQueue.Release(): %d", n)
+	} else {
+		if l := wq.Len(); l != 3 {
+			t.Fatalf("WaitQueue.Release(): %d", l)
+		}
+		if s := strings.Join(ss, ""); s != "test1test2" {
+			t.Fatalf("WaitQueue: %s", s)
+		}
+	}
+
+	if n := wq.ReleaseAll(); n != 3 {
+		t.Fatalf("WaitQueue.ReleaseAll(): %d", n)
+	} else {
+		if l := wq.Len(); l != 0 {
+			t.Fatalf("WaitQueue.ReleaseAll(): %d", l)
+		}
+		if s := strings.Join(ss, ""); s != "test1test2test3test4test5" {
+			t.Fatalf("WaitQueue: %s", s)
+		}
+	}
 }

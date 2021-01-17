@@ -23,6 +23,9 @@ type WaitQueue interface {
 	// NewWaiter creates a waiter and adds it to the wait queue.
 	NewWaiter() Waiter
 
+	// NewWaiter creates a receiptable waiter and adds it to the wait queue.
+	NewReceiptableWaiter() ReceiptableWaiter
+
 	// Len returns the number of waiters in the current queue.
 	Len() int
 
@@ -45,7 +48,7 @@ func NewWaitQueue() WaitQueue {
 // The built-in WaitQueue.
 type waitQueue struct {
 	mutex sync.Mutex
-	queue []CloseableWaiter
+	queue []Closeable
 }
 
 // NewWaiter creates a waiter and adds it to the wait queue.
@@ -55,6 +58,16 @@ func (wq *waitQueue) NewWaiter() Waiter {
 
 	w := NewCloseableWaiter()
 	wq.queue = append(wq.queue, w)
+	return w.Waiter()
+}
+
+// NewWaiter creates a receiptable waiter and adds it to the wait queue.
+func (wq *waitQueue) NewReceiptableWaiter() ReceiptableWaiter {
+	wq.mutex.Lock()
+	defer wq.mutex.Unlock()
+
+	w := NewDuplexWaiter()
+	wq.queue = append(wq.queue, CloseableFunc(w.CloseAndWaitDone))
 	return w.Waiter()
 }
 
@@ -73,30 +86,31 @@ func (wq *waitQueue) Release(n int) int {
 	wq.mutex.Lock()
 	defer wq.mutex.Unlock()
 
-	if max := len(wq.queue); max > 0 && n > 0 {
-		var queue []CloseableWaiter
-		for i, j := max-1, max-n; i >= 0; i-- {
-			if i < j {
-				queue = wq.queue[:i+1]
-				break
-			}
+	if m := len(wq.queue); m > 0 && n > 0 {
+		for i := 0; i < m && i < n; i++ {
 			wq.queue[i].Close()
 		}
-		wq.queue = queue
-		return max - len(queue)
+		if n >= m {
+			wq.queue = nil
+		} else {
+			queue := make([]Closeable, m-n)
+			copy(queue, wq.queue[n:])
+			wq.queue = queue
+		}
+		return m - len(wq.queue)
 	}
 	return 0
 }
 
-// ReleaseAll releases all the waiters in the queue.
-// This method returns the number of released waiters.
-// The release sequence is the same as the enqueue sequence.
+// ReleaseAll releases all the waiters in the queue. This method returns
+// the number of released waiters. The release sequence is the same as
+// the enqueue sequence.
 func (wq *waitQueue) ReleaseAll() (n int) {
 	wq.mutex.Lock()
 	defer wq.mutex.Unlock()
 
 	if n = len(wq.queue); n > 0 {
-		for i := n - 1; i >= 0; i-- {
+		for i := 0; i < n; i++ {
 			wq.queue[i].Close()
 		}
 		wq.queue = nil
