@@ -109,6 +109,10 @@ func (r *runner) WaitBy(c <-chan struct{}) error {
 
 // Exit method exits the current runner.
 func (r *runner) Exit() error {
+	if r.Exited() {
+		return nil
+	}
+
 	r.mutex.Lock()
 	defer func() {
 		// Make sure to unblock the Wait method.
