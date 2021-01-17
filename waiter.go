@@ -18,200 +18,166 @@ import (
 	"sync"
 )
 
-// The Waiter interface defines the waiter.
+// Waiter interface defines the waiter.
 type Waiter interface {
 	// Wait blocks the current coroutine and waits for the current waiter to be closed.
 	// For waiters that have been closed, this method will not block.
-	// Essentially, this method is relative to: <-Channel().
 	Wait()
 
 	// Channel returns a read-only channel that can be used for select.
 	// For waiters that have been closed, this method returns a closed channel.
 	Channel() <-chan struct{}
-
-	// Done reports that the current coroutine will exit.
-	// In an asynchronous coroutine, be sure to call this method before exiting.
-	Done()
 }
 
+// ReceiptableWaiter interface defines the receiptable waiter.
 type ReceiptableWaiter interface {
 	Waiter
 
-	// Done reports that the current coroutine will exit.
-	// In an asynchronous coroutine, be sure to call this method before exiting.
+	// Done reports that the current waiter has completed and is about to exit.
 	Done()
 }
 
-// The newChannelWaiter function returns a new instance of the built-in waiter.
-func newChannelWaiter() *channelWaiter {
-	return &channelWaiter{
-		messageChan: make(chan struct{}),
-		receiptChan: make(chan struct{}),
-	}
+// CloseableWaiter interface defines the closeable waiter.
+type CloseableWaiter interface {
+	Waiter
+
+	// Waiter returns a pure waiter.
+	Waiter() Waiter
+
+	// Close closes the current waiter. This method is idempotent.
+	Close()
 }
 
-// The channelWaiter type is a built-in implementation of the Waiter interface.
+// DuplexWaiter interface defines the duplex waiter.
+type DuplexWaiter interface {
+	ReceiptableWaiter
+
+	// Waiter returns a pure receiptable waiter.
+	Waiter() ReceiptableWaiter
+
+	// Close closes the current waiter. This method is idempotent.
+	Close()
+
+	// WaitDone waits for the Done() method of the current waiter to be called.
+	// This method returns only after the Done() method is called by the coroutine holding
+	// the wait. This method is idempotent.
+	// Essentially, this method is relative to: <-DoneChannel().
+	WaitDone()
+
+	// DoneChannel returns a read-only channel. When the Done() method of the current waiter
+	// is called, this channel will be closed.
+	DoneChannel() <-chan struct{}
+
+	// CloseAndWaitDone closes the current waiter and waits for the Done method of the
+	// current waiter to be called.
+	CloseAndWaitDone()
+}
+
+// The built-in Waiter.
 type channelWaiter struct {
-	messageChan, receiptChan chan struct{}
-	messageOnce, receiptOnce sync.Once
+	c chan struct{}
+}
+
+// Create and return a new built-in Waiter instance.
+func newChannelWaiter() *channelWaiter {
+	return &channelWaiter{c: make(chan struct{})}
 }
 
 // Wait blocks the current coroutine and waits for the current waiter to be closed.
 // For waiters that have been closed, this method will not block.
 // Essentially, this method is relative to: <-Channel().
-func (w *channelWaiter) Wait() {
-	<-w.messageChan
-}
+func (w *channelWaiter) Wait() { <-w.Channel() }
 
 // Channel returns a read-only channel that can be used for select.
 // For waiters that have been closed, this method returns a closed channel.
 func (w *channelWaiter) Channel() <-chan struct{} {
-	return w.messageChan
-}
-
-// Done reports that the current coroutine will exit.
-// In an asynchronous coroutine, be sure to call this method before exiting.
-func (w *channelWaiter) Done() {
-	w.receiptOnce.Do(w.closeReceiptChan)
-}
-
-// Close the receipt channel.
-func (w *channelWaiter) closeReceiptChan() {
-	close(w.receiptChan)
-}
-
-// Close the current waiter and waits for the Done method to be called.
-func (w *channelWaiter) close() {
-	w.messageOnce.Do(w.closeMessageChan)
-	<-w.receiptChan
-}
-
-// Close the message channel.
-func (w *channelWaiter) closeMessageChan() {
-	close(w.messageChan)
-}
-
-// The CloseableWaiter interface defines the closeable waiter.
-type CloseableWaiter interface {
-	Waiter
-
-	// Waiter returns a pure waiter.
-	// The behavior of the wait returned by this method is consistent with that of
-	// itself, except that the shutdown control function is hidden, which helps to
-	// ensure that the wait is not accidentally closed in the child coroutine.
-	Waiter() Waiter
-
-	// Close closes the current waiter and waits for the Done method to be called.
-	// This method returns only after the Waiter.Done() method is called by the
-	// coroutine holding the wait. This method is idempotent.
-	Close()
+	return w.c
 }
 
 // NewCloseableWaiter creates and returns a new CloseableWaiter instance.
 func NewCloseableWaiter() CloseableWaiter {
-	return &channelCloseableWaiter{newChannelWaiter()}
+	return newCloseableWaiter()
 }
 
-// The built-in implementation of the CloseableWaiter interface.
-type channelCloseableWaiter struct {
+// The built-in CloseableWaiter.
+type closeableWaiter struct {
 	*channelWaiter
+	once sync.Once
+}
+
+// Create and return a new built-in CloseableWaiter instance.
+func newCloseableWaiter() *closeableWaiter {
+	return &closeableWaiter{channelWaiter: newChannelWaiter()}
 }
 
 // Waiter returns a pure waiter.
-// The behavior of the wait returned by this method is consistent with that of
-// itself, except that the shutdown control function is hidden, which helps to
-// ensure that the wait is not accidentally closed in the child coroutine.
-func (w *channelCloseableWaiter) Waiter() Waiter {
-	return w.channelWaiter
+func (w *closeableWaiter) Waiter() Waiter { return w.channelWaiter }
+
+// Close closes the current waiter. This method is idempotent.
+func (w *closeableWaiter) Close() { w.once.Do(w.close) }
+
+func (w *closeableWaiter) close() { close(w.c) }
+
+// The built-in ReceiptableWaiter.
+type receiptableWaiter struct {
+	*channelWaiter
+	d    chan struct{}
+	once sync.Once
 }
 
-// Close closes the current waiter and waits for the Done method to be called.
-// This method returns only after the Waiter.Done method is called by the
-// coroutine holding the wait. This method is idempotent.
-func (w *channelCloseableWaiter) Close() {
-	w.close()
+// Create and return a new built-in ReceiptableWaiter instance.
+func newReceiptableWaiter() *receiptableWaiter {
+	return &receiptableWaiter{channelWaiter: newChannelWaiter(), d: make(chan struct{})}
 }
 
-// The Broadcaster interface defines the broadcaster.
-type Broadcaster interface {
-	// NewWaiter creates and returns a new Waiter instance.
-	// It is worth noting that the order of closing the wait is opposite to
-	// that of creation, and the closing process is linear.
-	// The Waiter returned by this method is one-time, and once it is closed,
-	// it will always be closed. If the broadcaster is closed, then this method
-	// will always return an empty waiter.
-	NewWaiter() Waiter
+// Done reports that the current waiter has completed and is about to exit.
+func (w *receiptableWaiter) Done() { w.once.Do(w.done) }
 
-	// Broadcast sends a close signal to all the waiters that have been created
-	// and waits for all the waiters to call the Waiter.Done method.
-	// After this method is called, the broadcaster will return to its initial state.
-	Broadcast()
+func (w *receiptableWaiter) done() { close(w.d) }
 
-	// Close closes the current broadcaster.
-	// The behavior of this method is consistent with the Broadcast method, the only
-	// difference is that after this method returns, the NewWaiter method will always
-	// return an empty waiter instance.
-	Close()
+// NewDuplexWaiter creates and returns a new DuplexWaiter instance.
+func NewDuplexWaiter() DuplexWaiter {
+	return newDuplexWaiter()
 }
 
-// NewBroadcaster creates and returns a new broadcaster instance.
-func NewBroadcaster() Broadcaster {
-	return &broadcaster{}
+// The built-in DuplexWaiter.
+type duplexWaiter struct {
+	*receiptableWaiter
+	once sync.Once
 }
 
-// The built-in implementation of the Broadcaster interface.
-type broadcaster struct {
-	mutex   sync.Mutex
-	waiters []CloseableWaiter
-	closed  bool
-}
-
-// NewWaiter creates and returns a new Waiter instance.
-// It is worth noting that the order of closing the wait is opposite to
-// that of creation, and the closing process is linear.
-// The Waiter returned by this method is one-time, and once it is closed,
-// it will always be closed. If the broadcaster is closed, then this method
-// will always return an empty waiter.
-func (b *broadcaster) NewWaiter() Waiter {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
-	if b.closed {
-		return EmptyWaiter()
+// Create and return a new built-in DuplexWaiter instance.
+func newDuplexWaiter() *duplexWaiter {
+	return &duplexWaiter{
+		receiptableWaiter: newReceiptableWaiter(),
 	}
-	w := NewCloseableWaiter()
-	b.waiters = append(b.waiters, w)
-	return w.Waiter()
 }
 
-// Broadcast sends a close signal to all the waiters that have been created
-// and waits for all the waiters to call the Waiter.Done method.
-// After this method is called, the broadcaster will return to its initial state.
-func (b *broadcaster) Broadcast() {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-
-	b.close()
+// Waiter returns a pure receiptable waiter.
+func (w *duplexWaiter) Waiter() ReceiptableWaiter {
+	return w.receiptableWaiter
 }
 
-// Close closes the current broadcaster.
-// The behavior of this method is consistent with the Broadcast method, the only
-// difference is that after this method returns, the NewWaiter method will always
-// return an empty waiter instance.
-func (b *broadcaster) Close() {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
+// Close closes the current waiter. This method is idempotent.
+func (w *duplexWaiter) Close() { w.once.Do(w.close) }
 
-	b.closed = true
-	b.close()
+func (w *duplexWaiter) close() { close(w.c) }
+
+// WaitDone waits for the Done() method of the current waiter to be called.
+// This method returns only after the Done() method is called by the coroutine holding
+// the wait. This method is idempotent.
+// Essentially, this method is relative to: <-DoneChannel().
+func (w *duplexWaiter) WaitDone() { <-w.DoneChannel() }
+
+// DoneChannel returns a read-only channel. When the Done() method of the current waiter
+// is called, this channel will be closed.
+func (w *duplexWaiter) DoneChannel() <-chan struct{} {
+	return w.d
 }
 
-// Close all the waiters in the current broadcaster in reverse order.
-func (b *broadcaster) close() {
-	if n := len(b.waiters); n > 0 {
-		for i := len(b.waiters) - 1; i >= 0; i-- {
-			b.waiters[i].Close()
-		}
-		b.waiters = nil
-	}
+// CloseAndWaitDone closes the current waiter and waits for the Done() method of the
+// current waiter to be called.
+func (w *duplexWaiter) CloseAndWaitDone() {
+	w.Close()
+	w.WaitDone()
 }
