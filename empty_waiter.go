@@ -20,23 +20,23 @@ import (
 
 // This is the global default empty wait.
 // Since the behavior of the empty wait is deterministic, we share an empty wait instance.
-var globalEmptyWaiter = new(emptyWaiter)
+var globalEmptyReceiptableWaiter = new(emptyReceiptableWaiter)
 
-// EmptyWaiter returns an empty waiter instance.
+// EmptyReceiptableWaiter returns an empty receiptable waiter instance.
 // For the returned empty waiter, the Wait method does not block, the Channel method
 // always returns a closed channel, and the Done method is an empty function.
-func EmptyWaiter() Waiter { return globalEmptyWaiter }
+func EmptyReceiptableWaiter() ReceiptableWaiter { return globalEmptyReceiptableWaiter }
 
 // The emptyWaiter type defines an empty waiter.
-type emptyWaiter struct{}
+type emptyReceiptableWaiter struct{}
 
 // Wait implements the Waiter interface, but do nothing.
-func (*emptyWaiter) Wait() { /* Do nothing */ }
+func (*emptyReceiptableWaiter) Wait() { /* Do nothing */ }
 
 // Channel returns a closed read-only channel.
-func (*emptyWaiter) Channel() <-chan struct{} {
+func (*emptyReceiptableWaiter) Channel() <-chan struct{} {
 	return internal.ClosedChan()
 }
 
 // Done implements the Waiter interface, but do nothing.
-func (*emptyWaiter) Done() { /* Do nothing */ }
+func (*emptyReceiptableWaiter) Done() { /* Do nothing */ }
